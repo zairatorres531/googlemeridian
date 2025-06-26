@@ -33,6 +33,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 * Add the ability to set `max_frequency` to `optimal_freq()` and update the
   `new_data` argument to take in `rf_impressions` rather than `reach` and
   `frequency` separately.
+* Add a helper method to create new data for optimizations with just spend or
+  impressions and CPM. This includes geo allocation based on population.
 
 ## [1.1.2] - 2025-06-11
 

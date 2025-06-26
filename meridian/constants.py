@@ -71,6 +71,8 @@ ORGANIC_FREQUENCY = 'organic_frequency'
 NON_MEDIA_TREATMENTS = 'non_media_treatments'
 REVENUE = 'revenue'
 NON_REVENUE = 'non_revenue'
+CPMU = 'cpmu'
+CPRF = 'cprf'
 REQUIRED_INPUT_DATA_ARRAY_NAMES = (
     KPI,
     POPULATION,

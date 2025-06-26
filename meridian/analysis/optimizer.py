@@ -1368,7 +1368,10 @@ class BudgetOptimizer:
         versions of all the remaining tensors. If any of the tensors in
         `new_data` is provided with a different number of time periods than in
         `InputData`, then all tensors must be provided with the same number of
-        time periods and the `time` tensor must be provided.
+        time periods and the `time` tensor must be provided. In this case, spend
+        tensors must be provided with `geo` and `time` granularity. If
+        `use_optimal_frequency` is `True`, `new_data.frequency` does not need to
+        be provided and is ignored. The optimal frequency is used instead.
       use_posterior: Boolean. If `True`, then the budget is optimized based on
         the posterior distribution of the model. Otherwise, the prior
         distribution is used.
@@ -1427,7 +1430,7 @@ class BudgetOptimizer:
         or equal to `(budget * gtol)`. `gtol` must be less than 1.
       use_optimal_frequency: If `True`, uses `optimal_frequency` calculated by
         trained Meridian model for optimization. If `False`, uses historical
-        frequency.
+        frequency or `new_data.frequency` if provided.
       use_kpi: If `True`, runs the optimization on KPI. Defaults to revenue.
       confidence_level: The threshold for computing the confidence intervals.
       batch_size: Maximum draws per chain in each batch. The calculation is run
@@ -1595,6 +1598,142 @@ class BudgetOptimizer:
         _optimized_data=optimized_data,
         _optimization_grid=optimization_grid,
     )
+
+  def create_optimization_tensors(
+      self,
+      time: Sequence[str] | tf.Tensor,
+      cpmu: tf.Tensor | None = None,
+      media: tf.Tensor | None = None,
+      media_spend: tf.Tensor | None = None,
+      cprf: tf.Tensor | None = None,
+      rf_impressions: tf.Tensor | None = None,
+      frequency: tf.Tensor | None = None,
+      rf_spend: tf.Tensor | None = None,
+      revenue_per_kpi: tf.Tensor | None = None,
+      use_optimal_frequency: bool = True,
+  ) -> analyzer.DataTensors:
+    """Creates a `DataTensors` for optimizations from CPM and flighting data.
+
+    CPM is broken down into cost per media unit, `cpmu`, for the media channels
+    and cost per impression (reach * frequency), `cprf`, for the reach and
+    frequency channels.
+
+    The flighting pattern can be specified as the spend flighting or the media
+    units flighting pattern at the time or geo and time granularity. If data is
+    passed without a geo dimension, then the values are interpreted as
+    national-level totals. If the model is a geo-level model, then the values
+    are allocated across geos based on the population used in the model.
+
+    Below are the different combinations of tensors that can be provided:
+      For media:
+      1) `media`, `cpmu` (media units flighting pattern)
+      2) `media_spend`, `cpmu` (spend flighting pattern)
+
+      For R&F:
+      If `use_optimal_frequency=True`, `frequency` should not be provided.
+      Frequency input is not required for the optimization, so the new
+      `DataTensors` object will be created with `frequuency` arbitrarily set to
+      1 and `reach=rf_impressions`.
+      1) `rf_impressions`, `cprf` (impressions flighting pattern)
+      2) `rf_spend`, `cprf` (spend flighting pattern)
+
+      If `use_optimal_frequency=False`:
+      1) `rf_impressions`, `frequency`, `cprf` (impressions flighting pattern)
+      2) `rf_spend`, `frequency`, `cprf` (spend flighting pattern)
+
+
+    Args:
+      time: A sequence or tensor of time coordinates in the "YYYY-mm-dd" string
+        format.
+      cpmu: A tensor of cost per media unit with dimensions `(n_media_channels),
+        `(T, n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
+        dimension `T`.
+      media: An optional tensor of media unit values with dimensions `(T,
+        n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
+        dimension `T`.
+      media_spend: A tensor of media spend values with dimensions `(T,
+        n_media_channels)` or `(n_geos, T, n_media_channels)` for any time
+        dimension `T`.
+      cprf: A tensor of cost per impression (reach * frequency) with dimensions
+        `(n_rf_channels), `(T, n_rf_channels)` or `(n_geos, T, n_rf_channels)`
+        for any time dimension `T`.
+      rf_impressions: A tensor of impressions (reach * frequency) values with
+        dimensions `(T, n_rf_channels)` or `(n_geos, T, n_rf_channels)` for any
+        time dimension `T`.
+      frequency: A tensor of frequency values with dimensions `(n_rf_channels)`,
+        `(T, n_rf_channels)` or `(n_geos, T, n_rf_channels)` for any time
+        dimension `T`. If `use_optimal_frequency=True`, then this tensor should
+        not be provided and the optimal frequency will be calculated and used.
+      rf_spend: A tensor of rf spend values with dimensions `(T, n_rf_channels)`
+        or `(n_geos, T, n_rf_channels)` for any time dimension `T`.
+      revenue_per_kpi: A tensor of revenue per KPI values with dimensions `()`,
+        `(T)`, or `(n_geos, T)` for any time dimension `T`.
+      use_optimal_frequency: Boolean. If `True`, the optiaml frequency will be
+        used in the optimization and a frequency value should not be provided.
+        In this case, `reach=rf_impressions` and `frequency=1` (by arbitrary
+        convention) in the new data. If `False`, the frequency value must be
+        provided.
+
+    Returns:
+      A `DataTensors` object with optional tensors `media`, `reach`,
+      `frequency`, `media_spend`, `rf_spend`, `revenue_per_kpi`, and `time`.
+    """
+    self._validate_optimization_tensors(
+        cpmu=cpmu,
+        cprf=cprf,
+        media=media,
+        rf_impressions=rf_impressions,
+        frequency=frequency,
+        media_spend=media_spend,
+        rf_spend=rf_spend,
+        revenue_per_kpi=revenue_per_kpi,
+        use_optimal_frequency=use_optimal_frequency,
+    )
+    n_times = time.shape[0] if isinstance(time, tf.Tensor) else len(time)
+    n_geos = self._meridian.n_geos
+    revenue_per_kpi = (
+        _expand_tensor(revenue_per_kpi, (n_geos, n_times))
+        if revenue_per_kpi is not None
+        else None
+    )
+
+    tensors = {}
+    if media is not None:
+      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media.shape[-1]))
+      tensors[c.MEDIA] = self._allocate_tensor_by_population(media)
+      tensors[c.MEDIA_SPEND] = tensors[c.MEDIA] * cpmu
+    if media_spend is not None:
+      cpmu = _expand_tensor(cpmu, (n_geos, n_times, media_spend.shape[-1]))
+      tensors[c.MEDIA_SPEND] = self._allocate_tensor_by_population(media_spend)
+      tensors[c.MEDIA] = tensors[c.MEDIA_SPEND] / cpmu
+    if rf_impressions is not None:
+      shape = (n_geos, n_times, rf_impressions.shape[-1])
+      cprf = _expand_tensor(cprf, shape)
+      allocated_impressions = self._allocate_tensor_by_population(
+          rf_impressions
+      )
+      tensors[c.RF_SPEND] = allocated_impressions * cprf
+      if use_optimal_frequency:
+        frequency = tf.ones_like(allocated_impressions)
+      tensors[c.FREQUENCY] = _expand_tensor(frequency, shape)
+      tensors[c.REACH] = tf.math.divide_no_nan(
+          allocated_impressions, tensors[c.FREQUENCY]
+      )
+    if rf_spend is not None:
+      shape = (n_geos, n_times, rf_spend.shape[-1])
+      cprf = _expand_tensor(cprf, shape)
+      tensors[c.RF_SPEND] = self._allocate_tensor_by_population(rf_spend)
+      impressions = tf.math.divide_no_nan(tensors[c.RF_SPEND], cprf)
+      if use_optimal_frequency:
+        frequency = tf.ones_like(impressions)
+      tensors[c.FREQUENCY] = _expand_tensor(frequency, shape)
+      tensors[c.REACH] = tf.math.divide_no_nan(
+          impressions, tensors[c.FREQUENCY]
+      )
+    if revenue_per_kpi is not None:
+      tensors[c.REVENUE_PER_KPI] = revenue_per_kpi
+    tensors[c.TIME] = tf.convert_to_tensor(time)
+    return analyzer.DataTensors(**tensors)
 
   def _validate_grid(
       self,
@@ -1990,8 +2129,6 @@ class BudgetOptimizer:
       tf.Tensor | None,
       tf.Tensor | None,
       tf.Tensor | None,
-      tf.Tensor | None,
-      tf.Tensor | None,
   ]:
     """Gets the tensors for incremental outcome, based on spend data.
 
@@ -1999,12 +2136,11 @@ class BudgetOptimizer:
     incremental_outcome() for creating budget data. new_media is calculated
     assuming a constant cpm between historical spend and optimization spend.
     new_reach and new_frequency are calculated by first multiplying them
-    together and getting rf_media(impressions), and then calculating
-    new_rf_media given the same formula for new_media. new_frequency is
-    optimal_frequency if optimal_frequency is not none, and
-    self._meridian.rf_tensors.frequency otherwise. new_reach is calculated using
-    (new_rf_media / new_frequency). new_spend and new_rf_spend are taken from
-    their respective indexes in spend.
+    together and getting `rf_impressions`, and then calculating
+    `new_rf_impressions` given the same formula for `new_media`. `new_frequency`
+    is `optimal_frequency` if `optimal_frequency` is not None, and
+    `self._meridian.rf_tensors.frequency` otherwise. `new_reach` is calculated
+    using `new_rf_impressions / new_frequency`.
 
     Args:
       hist_spend: historical spend data.
@@ -2021,8 +2157,7 @@ class BudgetOptimizer:
         frequency is used for the optimization scenario.
 
     Returns:
-      Tuple of tf.tensors (new_media, new_media_spend, new_reach, new_frequency,
-      new_rf_spend).
+      Tuple of tf.tensors (new_media, new_reach, new_frequency).
     """
     new_data = new_data or analyzer.DataTensors()
     filled_data = new_data.validate_and_fill_missing_data(
@@ -2037,37 +2172,29 @@ class BudgetOptimizer:
           )
           * filled_data.media
       )
-      new_media_spend = tf.convert_to_tensor(
-          spend[: self._meridian.n_media_channels]
-      )
     else:
       new_media = None
-      new_media_spend = None
     if self._meridian.n_rf_channels > 0:
-      rf_media = filled_data.reach * filled_data.frequency
-      new_rf_media = (
+      rf_impressions = filled_data.reach * filled_data.frequency
+      new_rf_impressions = (
           tf.math.divide_no_nan(
               spend[-self._meridian.n_rf_channels :],
               hist_spend[-self._meridian.n_rf_channels :],
           )
-          * rf_media
+          * rf_impressions
       )
       frequency = (
           filled_data.frequency
           if optimal_frequency is None
           else optimal_frequency
       )
-      new_reach = tf.math.divide_no_nan(new_rf_media, frequency)
-      new_frequency = tf.math.divide_no_nan(new_rf_media, new_reach)
-      new_rf_spend = tf.convert_to_tensor(
-          spend[-self._meridian.n_rf_channels :]
-      )
+      new_reach = tf.math.divide_no_nan(new_rf_impressions, frequency)
+      new_frequency = tf.math.divide_no_nan(new_rf_impressions, new_reach)
     else:
       new_reach = None
       new_frequency = None
-      new_rf_spend = None
 
-    return (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend)
+    return (new_media, new_reach, new_frequency)
 
   def _create_budget_dataset(
       self,
@@ -2091,7 +2218,7 @@ class BudgetOptimizer:
     )
     spend_tensor = tf.convert_to_tensor(spend, dtype=tf.float32)
     hist_spend = tf.convert_to_tensor(hist_spend, dtype=tf.float32)
-    (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
+    (new_media, new_reach, new_frequency) = (
         self._get_incremental_outcome_tensors(
             hist_spend,
             spend_tensor,
@@ -2100,18 +2227,30 @@ class BudgetOptimizer:
         )
     )
     budget = np.sum(spend_tensor)
+    inc_outcome_data = analyzer.DataTensors(
+        media=new_media,
+        reach=new_reach,
+        frequency=new_frequency,
+        revenue_per_kpi=filled_data.revenue_per_kpi,
+    )
 
     # incremental_outcome here is a tensor with the shape
     # (n_chains, n_draws, n_channels)
     incremental_outcome = self._analyzer.incremental_outcome(
         use_posterior=use_posterior,
-        new_data=analyzer.DataTensors(
-            media=new_media,
-            reach=new_reach,
-            frequency=new_frequency,
-            revenue_per_kpi=filled_data.revenue_per_kpi,
-        ),
+        new_data=inc_outcome_data,
         selected_times=selected_times,
+        use_kpi=use_kpi,
+        batch_size=batch_size,
+        include_non_paid_channels=False,
+    )
+    incremental_increase = 0.01
+    mroi_numerator = self._analyzer.incremental_outcome(
+        new_data=inc_outcome_data,
+        selected_times=selected_times,
+        scaling_factor0=1.0,
+        scaling_factor1=1 + incremental_increase,
+        use_posterior=use_posterior,
         use_kpi=use_kpi,
         batch_size=batch_size,
         include_non_paid_channels=False,
@@ -2158,20 +2297,8 @@ class BudgetOptimizer:
         include_median=True,
     )
     marginal_roi = analyzer.get_central_tendency_and_ci(
-        data=self._analyzer.marginal_roi(
-            use_posterior=use_posterior,
-            new_data=analyzer.DataTensors(
-                media=new_media,
-                reach=new_reach,
-                frequency=new_frequency,
-                media_spend=new_media_spend,
-                rf_spend=new_rf_spend,
-                revenue_per_kpi=filled_data.revenue_per_kpi,
-            ),
-            selected_times=selected_times,
-            batch_size=batch_size,
-            by_reach=True,
-            use_kpi=use_kpi,
+        data=tf.math.divide_no_nan(
+            mroi_numerator, spend_tensor * incremental_increase
         ),
         confidence_level=confidence_level,
         include_median=True,
@@ -2452,6 +2579,100 @@ class BudgetOptimizer:
       )
     return (spend_grid, incremental_outcome_grid)
 
+  def _validate_optimization_tensors(
+      self,
+      cpmu: tf.Tensor | None = None,
+      cprf: tf.Tensor | None = None,
+      media: tf.Tensor | None = None,
+      rf_impressions: tf.Tensor | None = None,
+      frequency: tf.Tensor | None = None,
+      media_spend: tf.Tensor | None = None,
+      rf_spend: tf.Tensor | None = None,
+      revenue_per_kpi: tf.Tensor | None = None,
+      use_optimal_frequency: bool = True,
+  ):
+    """Validates the tensors needed for optimization."""
+    if (media is not None or media_spend is not None) and cpmu is None:
+      raise ValueError(
+          'If `media` or `media_spend` is provided, then `cpmu` must also be'
+          ' provided.'
+      )
+    if (rf_impressions is not None or rf_spend is not None) and cprf is None:
+      raise ValueError(
+          'If `reach` and `frequency` or `rf_spend` is provided, then `cprf`'
+          ' must also be provided.'
+      )
+    if media is not None and media_spend is not None:
+      raise ValueError('Only one of `media` or `media_spend` can be provided.')
+    if rf_impressions is not None and rf_spend is not None:
+      raise ValueError(
+          'Only one of `rf_impressions` or `rf_spend` can be provided.'
+      )
+    if use_optimal_frequency and frequency is not None:
+      raise ValueError(
+          'If `use_optimal_frequency` is `True`, then `frequency` must not be'
+          ' provided.'
+      )
+    if not use_optimal_frequency and frequency is None:
+      if rf_impressions is not None or rf_spend is not None:
+        raise ValueError(
+            'If `use_optimal_frequency` is `False`, then `frequency` must be'
+            ' provided.'
+        )
+
+    n_geos = [
+        t.shape[0]
+        for t in [
+            cpmu,
+            cprf,
+            media,
+            rf_impressions,
+            frequency,
+            media_spend,
+            rf_spend,
+        ]
+        if t is not None and t.ndim == 3
+    ]
+    if revenue_per_kpi is not None and revenue_per_kpi.ndim == 2:
+      n_geos.append(revenue_per_kpi.shape[0])
+    if any(n_geo != self._meridian.n_geos for n_geo in n_geos):
+      raise ValueError(
+          'All tensors with a geo dimension must have the same number of geos'
+          ' as in `meridian.InputData`.'
+      )
+
+  def _allocate_tensor_by_population(
+      self, tensor: tf.Tensor, required_ndim: int = 3
+  ):
+    """Allocates a tensor of shape (time,) or (time, channel) by the population.
+
+    Args:
+      tensor: A tensor of shape (time,) or (time, channel).
+      required_ndim: The required number of dimensions for the tensor.
+
+    Returns:
+      The scaled tensor of shape (geo, time) or (geo, time, channel).
+    """
+    if tensor.ndim == required_ndim:
+      return tensor
+
+    if tensor.ndim != required_ndim - 1:
+      raise ValueError(
+          'Tensor must have 1 less than the required number of dimensions, '
+          f'{required_ndim}, in order to be allocated by population. Found '
+          f'{tensor.ndim} dimensions.'
+      )
+
+    population = self._meridian.population
+    normalized_population = population / tf.reduce_sum(population)
+    if tensor.ndim == 1:
+      reshaped_population = normalized_population[:, tf.newaxis]
+      reshaped_tensor = tensor[tf.newaxis, :]
+    else:
+      reshaped_population = normalized_population[:, tf.newaxis, tf.newaxis]
+      reshaped_tensor = tensor[tf.newaxis, :, :]
+    return reshaped_tensor * reshaped_population
+
 
 def _validate_pct_of_spend(
     n_channels: int,
@@ -2705,3 +2926,27 @@ def _raise_warning_if_target_constraints_not_met(
           f' ROI is {target_mroi}, but the actual channel marginal ROIs are'
           f' {optimized_mroi}.'
       )
+
+
+def _expand_tensor(tensor: tf.Tensor, required_shape: tuple[int, ...]):
+  """Expands a tensor to the required number of dimensions."""
+  if tensor.shape == required_shape:
+    return tensor
+  if tensor.ndim == 0:
+    return tf.fill(required_shape, tensor)
+
+  # Tensor must be less than or equal to the required number of dimensions and
+  # the shape must match the required shape excluding the difference in number
+  # of dims.
+  if tensor.ndim <= len(required_shape) and list(tensor.shape) == list(
+      required_shape[-tensor.ndim :]
+  ):
+    n_tile_dims = len(required_shape) - tensor.ndim
+    repeats = list(required_shape[:n_tile_dims]) + [1] * tensor.ndim
+    reshaped_tensor = tf.reshape(tensor, [1] * n_tile_dims + list(tensor.shape))
+    return tf.tile(reshaped_tensor, repeats)
+
+  raise ValueError(
+      f'Cannot expand tensor with shape {tensor.shape} to target'
+      f' {required_shape}.'
+  )

@@ -59,16 +59,20 @@ class DataTensors(tf.experimental.ExtensionType):
   Attributes:
     media: Optional tensor with dimensions `(n_geos, T, n_media_channels)` for
       any time dimension `T`.
-    media_spend: Optional tensor with dimensions `(n_geos, T, n_media_channels)`
-      for any time dimension `T`.
+    media_spend: Optional tensor with dimensions `(n_media_channels,)` or
+      `(n_geos, T, n_media_channels)` for any time dimension `T`. If the object
+      includes variables with modified time periods, then this tensor must be
+      provided at the geo and time granularity.
     reach: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for any
       time dimension `T`.
     frequency: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
       any time dimension `T`.
     rf_impressions: Optional tensor with dimensions `(n_geos, T, n_rf_channels)`
       for any time dimension `T`.
-    rf_spend: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
-      any time dimension `T`.
+    rf_spend: Optional tensor with dimensions `(n_rf_channels,)` or `(n_geos, T,
+      n_rf_channels)` for any time dimension `T`. If the object includes
+      variables with modified time periods, then this tensor must be provided at
+      the geo and time granularity.
     organic_media: Optional tensor with dimensions `(n_geos, T,
       n_organic_media_channels)` for any time dimension `T`.
     organic_reach: Optional tensor with dimensions `(n_geos, T,
@@ -406,13 +410,6 @@ class DataTensors(tf.experimental.ExtensionType):
 
       if old_tensor is None:
         continue
-      # Skip spend data with only 1 dimension of (n_channels).
-      if (
-          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
-          and new_tensor is not None
-          and new_tensor.ndim == 1
-      ):
-        continue
 
       if new_tensor is None:
         missing_params.append(var_name)
@@ -423,6 +420,16 @@ class DataTensors(tf.experimental.ExtensionType):
             f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
             "time periods, which does not match the modified number of time "
             f"periods, {new_n_times}.",
+        )
+      elif (
+          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
+          and new_tensor.ndim == 1
+      ):
+        raise ValueError(
+            "If the time dimension of any variable in `new_data` is modified, "
+            "then spend variables must be provided at the geo and time "
+            "granularity with thee same number of time periods as the other "
+            f"new data variables. Found `{var_name}` with only 1 dimension."
         )
       elif new_tensor.ndim > 1 and new_tensor.shape[1] != new_n_times:
         raise ValueError(

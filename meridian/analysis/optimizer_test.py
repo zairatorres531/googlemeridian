@@ -929,33 +929,33 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
   def test_incremental_outcome_tensors(self):
     spend = np.array([100, 200, 300, 400, 500], dtype=np.float32)
     hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float32)
-    (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
+    (new_media, new_reach, new_frequency) = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend, spend
         )
     )
     expected_media = (
         self.meridian_media_and_rf.media_tensors.media
-        * tf.math.divide_no_nan(new_media_spend, hist_spend[:_N_MEDIA_CHANNELS])
+        * tf.math.divide_no_nan(
+            spend[:_N_MEDIA_CHANNELS], hist_spend[:_N_MEDIA_CHANNELS]
+        )
     )
-    expected_media_spend = spend[:_N_MEDIA_CHANNELS]
     expected_reach = (
         self.meridian_media_and_rf.rf_tensors.reach
-        * tf.math.divide_no_nan(new_rf_spend, hist_spend[-_N_RF_CHANNELS:])
+        * tf.math.divide_no_nan(
+            spend[-_N_RF_CHANNELS:], hist_spend[-_N_RF_CHANNELS:]
+        )
     )
     expected_frequency = self.meridian_media_and_rf.rf_tensors.frequency
-    expected_rf_spend = spend[-_N_RF_CHANNELS:]
     np.testing.assert_allclose(new_media, expected_media)
-    np.testing.assert_allclose(new_media_spend, expected_media_spend)
     np.testing.assert_allclose(new_reach, expected_reach)
     np.testing.assert_allclose(new_frequency, expected_frequency)
-    np.testing.assert_allclose(new_rf_spend, expected_rf_spend)
 
   def test_incremental_outcome_tensors_with_optimal_frequency(self):
     spend = np.array([100, 200, 300, 400, 500], dtype=np.float32)
     hist_spend = np.array([350, 400, 200, 50, 500], dtype=np.float32)
     optimal_frequency = np.array([2, 2], dtype=np.float32)
-    (new_media, new_media_spend, new_reach, new_frequency, new_rf_spend) = (
+    (new_media, new_reach, new_frequency) = (
         self.budget_optimizer_media_and_rf._get_incremental_outcome_tensors(
             hist_spend=hist_spend,
             spend=spend,
@@ -964,9 +964,10 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     expected_media = (
         self.meridian_media_and_rf.media_tensors.media
-        * tf.math.divide_no_nan(new_media_spend, hist_spend[:_N_MEDIA_CHANNELS])
+        * tf.math.divide_no_nan(
+            spend[:_N_MEDIA_CHANNELS], hist_spend[:_N_MEDIA_CHANNELS]
+        )
     )
-    expected_media_spend = spend[:_N_MEDIA_CHANNELS]
     rf_media = (
         self.meridian_media_and_rf.rf_tensors.reach
         * self.meridian_media_and_rf.rf_tensors.frequency
@@ -974,7 +975,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     expected_reach = tf.math.divide_no_nan(
         rf_media
         * tf.math.divide_no_nan(
-            new_rf_spend,
+            spend[-_N_RF_CHANNELS:],
             hist_spend[-_N_RF_CHANNELS:],
         ),
         optimal_frequency,
@@ -983,12 +984,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         tf.ones_like(self.meridian_media_and_rf.rf_tensors.frequency)
         * optimal_frequency
     )
-    expected_rf_spend = spend[-_N_RF_CHANNELS:]
     np.testing.assert_allclose(new_media, expected_media)
-    np.testing.assert_allclose(new_media_spend, expected_media_spend)
     np.testing.assert_allclose(new_reach, expected_reach)
     np.testing.assert_allclose(new_frequency, expected_frequency)
-    np.testing.assert_allclose(new_rf_spend, expected_rf_spend)
 
   @mock.patch.object(optimizer.BudgetOptimizer, '_create_grids', autospec=True)
   @mock.patch.object(optimizer, '_get_round_factor', autospec=True)
@@ -4261,14 +4259,8 @@ class OptimizerKPITest(parameterized.TestCase):
     )
 
     mock_incremental_outcome.assert_called_with(
-        # marginal roi computation in the analyzer transitively calls
-        # incremental_outcome() with the following arguments.
-        selected_geos=None,
+        # marginal roi numerator computation requires the following arguments.
         selected_times=None,
-        aggregate_geos=True,
-        aggregate_times=True,
-        inverse_transform_outcome=True,
-        by_reach=True,
         scaling_factor0=1.0,
         scaling_factor1=1.01,
         # Note that the above arguments also happen to be their default values.
@@ -4348,6 +4340,252 @@ class OptimizerKPITest(parameterized.TestCase):
         ' Set `use_kpi=True` to perform KPI analysis instead.',
     ):
       self.budget_optimizer_media_and_rf_kpi.optimize(use_kpi=False)
+
+
+class OptimizerNewDataTensorsTest(tf.test.TestCase):
+
+  def setUp(self):
+    """Set up common tensors for all tests."""
+    super().setUp()
+    self.time = ['2023-01-01', '2023-01-08']
+    self.population = tf.constant(
+        [1000.0, 4000.0], dtype=tf.float32
+    )  # n_geos=2
+    self.cpmu = tf.constant(
+        [
+            [[10.0, 11.0, 12.0], [13.0, 14.0, 15.0]],
+            [[16.0, 17.0, 18.0], [19.0, 20.0, 21.0]],
+        ],
+        dtype=tf.float32,
+    )  # n_channels=3
+    self.cprf = tf.constant([[[1.0], [1.0]], [[2.0], [2.0]]], dtype=tf.float32)
+    self.frequency = tf.constant(
+        [[[2.0], [2.0]], [[3.0], [3.0]]], dtype=tf.float32
+    )
+    test_input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=2,
+            n_times=5,
+            n_media_times=5,
+            n_controls=1,
+            n_media_channels=3,
+            n_rf_channels=1,
+            seed=0,
+        )
+    )
+    test_input_data.population = self.population
+    self.meridian = model.Meridian(input_data=test_input_data)
+    self.budget_optimizer = optimizer.BudgetOptimizer(self.meridian)
+
+  def test_value_error_if_media_without_cpmu(self):
+    with self.assertRaisesRegex(ValueError, 'cpmu` must also be provided'):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, media=tf.zeros((2, 2, 3))
+      )
+
+  def test_value_error_if_rf_without_cprf(self):
+    with self.assertRaisesRegex(ValueError, 'cprf` must also be provided'):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time,
+          rf_impressions=tf.zeros((2, 2, 1)),
+      )
+
+  def test_value_error_if_media_and_media_spend_provided(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Only one of `media` or `media_spend`'
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time,
+          cpmu=self.cpmu,
+          media=tf.zeros((2, 2, 3)),
+          media_spend=tf.zeros((2, 2, 3)),
+      )
+
+  def test_value_error_if_reach_and_rf_spend_provided(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Only one of `rf_impressions` or `rf_spend`'
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time,
+          cprf=self.cprf,
+          rf_impressions=tf.zeros((2, 2, 1)),
+          rf_spend=tf.zeros((2, 2, 1)),
+      )
+
+  def test_value_error_if_frequency_not_provided_wo_optimal_frequency(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'If `use_optimal_frequency` is `False`, then `frequency` must be'
+        ' provided.',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time,
+          cprf=self.cprf,
+          rf_impressions=tf.zeros((2, 2, 1)),
+          use_optimal_frequency=False,
+      )
+
+  def test_value_error_if_frequency_is_provided_with_optimal_frequency(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'If `use_optimal_frequency` is `True`, then `frequency` must not be'
+        ' provided.',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time,
+          cprf=self.cprf,
+          rf_spend=tf.ones_like((2, 2, 1)),
+          frequency=tf.ones_like((2, 2, 1)),
+          use_optimal_frequency=True,
+      )
+
+  def test_value_error_n_geos_not_matching(self):
+    with self.assertRaisesRegex(
+        ValueError, 'with a geo dimension must have the same number of geos'
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cpmu=self.cpmu, media=tf.zeros((4, 2, 3))
+      )
+
+  def test_value_error_allocate_by_population_wrong_ndim(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'Tensor must have 1 less than the required number of dimensions',
+    ):
+      self.budget_optimizer.create_optimization_tensors(
+          time=self.time, cpmu=self.cpmu, media=tf.zeros((2, 2, 2, 3))
+      )
+
+  def test_media_units_flighting_calculates_spend(self):
+    media = tf.constant(
+        [
+            [[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
+            [[20.0, 20.0, 20.0], [20.0, 20.0, 20.0]],
+        ],
+        dtype=tf.float32,
+    )
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time, cpmu=self.cpmu, media=media
+    )
+    expected_spend = media * self.cpmu
+    self.assertAllClose(result.media, media)
+    self.assertAllClose(result.media_spend, expected_spend)
+
+  def test_spend_flighting_calculates_media(self):
+    media_spend = tf.constant(
+        [
+            [[100.0, 110.0, 120.0], [130.0, 140.0, 150.0]],
+            [[260.0, 270.0, 280.0], [290.0, 300.0, 310.0]],
+        ],
+        dtype=tf.float32,
+    )
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time, cpmu=self.cpmu, media_spend=media_spend
+    )
+    expected_media = media_spend / self.cpmu
+    # Avoid the pytype check complaint.
+    assert result.media is not None and result.media_spend is not None
+    self.assertAllClose(result.media_spend, media_spend)
+    self.assertAllClose(result.media, expected_media)
+
+  def test_population_scaling_for_2d_media_spend(self):
+    media_spend_2d = tf.constant(
+        [[500.0, 500.0, 500.0], [1000.0, 1000.0, 1000.0]], dtype=tf.float32
+    )  # (time, channel)
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time,
+        cpmu=self.cpmu,
+        media_spend=media_spend_2d,
+    )
+
+    # Population proportions are [0.2, 0.8] for population [1000, 4000]
+    expected_scaled_spend = tf.constant(
+        [
+            [[100.0, 100.0, 100.0], [200.0, 200.0, 200.0]],
+            [[400.0, 400.0, 400.0], [800.0, 800.0, 800.0]],
+        ],  # Geo 1 (20%)  # Geo 2 (80%)
+        dtype=tf.float32,
+    )
+
+    # Avoid the pytype check complaint.
+    assert result.media is not None and result.media_spend is not None
+    # Check that the sum over geos equals the original 2D tensor
+    self.assertAllClose(
+        tf.reduce_sum(result.media_spend, axis=0), media_spend_2d
+    )
+    self.assertAllClose(result.media_spend, expected_scaled_spend)
+    self.assertEqual(result.media.shape, (2, 2, 3))
+
+  def test_rf_flighting_with_scaling(self):
+    rf_spend_2d = tf.constant([[100.0], [200.0]], dtype=tf.float32)
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time,
+        cprf=self.cprf,
+        rf_spend=rf_spend_2d,
+    )
+
+    # Avoid the pytype check complaint.
+    assert (
+        result.rf_spend is not None
+        and result.frequency is not None
+        and result.reach is not None
+    )
+    self.assertEqual(result.rf_spend.shape, (2, 2, 1))
+    self.assertEqual(result.frequency.shape, (2, 2, 1))
+    self.assertEqual(result.reach.shape, (2, 2, 1))
+
+    calculated_rf_spend = result.reach * result.frequency * self.cprf
+    self.assertAllClose(result.frequency, tf.ones((2, 2, 1)))
+    self.assertAllClose(result.rf_spend, calculated_rf_spend)
+
+  def test_frequency_with_expansion(self):
+    frequency = tf.constant(1.0, dtype=tf.float32)
+    rf_spend_2d = tf.constant([[100.0], [200.0]], dtype=tf.float32)
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time,
+        cprf=self.cprf,
+        rf_spend=rf_spend_2d,
+        frequency=frequency,
+        use_optimal_frequency=False,
+    )
+    expected_scaled_frequency = tf.constant(
+        [[[1.0], [1.0]], [[1.0], [1.0]]],
+        dtype=tf.float32,
+    )
+    # Avoid the pytype check complaint.
+    assert result.frequency is not None
+    self.assertEqual(result.frequency.shape, (2, 2, 1))
+    self.assertAllClose(result.frequency, expected_scaled_frequency)
+
+  def test_scalar_revenue_per_kpi_with_expansion(self):
+    revenue_per_kpi = tf.constant(100.0, dtype=tf.float32)
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time,
+        revenue_per_kpi=revenue_per_kpi,
+    )
+    expected_scaled_revenue_per_kpi = tf.constant(
+        [[100.0, 100.0], [100.0, 100.0]],
+        dtype=tf.float32,
+    )
+    # Avoid the pytype check complaint.
+    assert result.revenue_per_kpi is not None
+    self.assertEqual(result.revenue_per_kpi.shape, (2, 2))
+    self.assertAllClose(result.revenue_per_kpi, expected_scaled_revenue_per_kpi)
+
+  def test_revenue_per_kpi_with_expansion(self):
+    revenue_per_kpi = tf.constant([100.0, 200.0], dtype=tf.float32)
+    result = self.budget_optimizer.create_optimization_tensors(
+        time=self.time,
+        revenue_per_kpi=revenue_per_kpi,
+    )
+    expected_scaled_revenue_per_kpi = tf.constant(
+        [[100.0, 200.0], [100.0, 200.0]],
+        dtype=tf.float32,
+    )
+    # Avoid the pytype check complaint.
+    assert result.revenue_per_kpi is not None
+    self.assertEqual(result.revenue_per_kpi.shape, (2, 2))
+    self.assertAllClose(result.revenue_per_kpi, expected_scaled_revenue_per_kpi)
 
 
 if __name__ == '__main__':
