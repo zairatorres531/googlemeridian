@@ -1408,22 +1408,63 @@ class InputDataLoaderTest(parameterized.TestCase):
     )
     self.assertEqual(coord_to_columns, expected_coord_to_columns)
 
-  def test_coords_to_columns_fails_missing_media_and_rf(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        '`coord_to_columns` should include media data (`media` and'
-        ' `media_spend`) or RF data (`reach`, `frequency` and `rf_spend`), or'
-        ' both.',
-    ):
-      load.CoordToColumns(
-          time='time',
-          geo='time',
-          controls=['Weather'],
-          population='population',
-          kpi='Revenue',
-          revenue_per_kpi='revenue_per_kpi',
-          media=['Impressions_Channel_1', 'Impressions_Channel_2'],
-      )
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='has_media_no_spend_no_rf',
+          expected_error_message=(
+              '`coord_to_columns` should include media data .* or RF data .*,'
+              ' or both.'
+          ),
+          coord_to_columns_kwargs={
+              'time': 'time',
+              'controls': ['Weather'],
+              'population': 'population',
+              'kpi': 'Revenue',
+              'revenue_per_kpi': 'revenue_per_kpi',
+              'media': ['Impressions_Channel_1', 'Impressions_Channel_2'],
+          },
+      ),
+      dict(
+          testcase_name='has_rf_no_spend_no_media',
+          expected_error_message=(
+              '`coord_to_columns` should include media data .* or RF data .*,'
+              ' or both.'
+          ),
+          coord_to_columns_kwargs={
+              'time': 'time',
+              'geo': 'geo',
+              'controls': ['Weather'],
+              'population': 'population',
+              'kpi': 'Revenue',
+              'revenue_per_kpi': 'revenue_per_kpi',
+              'reach': ['Reach_Channel_1', 'Reach_Channel_2'],
+              'frequency': ['Frequency_Channel_1', 'Frequency_Channel_2'],
+              'media': [],
+              'media_spend': [],
+          },
+      ),
+      dict(
+          testcase_name='empty_revenue_per_kpi',
+          expected_error_message=(
+              '`revenue_per_kpi` should not be empty if provided.'
+          ),
+          coord_to_columns_kwargs={
+              'controls': ['Weather'],
+              'population': 'population',
+              'kpi': 'Revenue',
+              'revenue_per_kpi': '  ',
+              'media': ['Impressions_Channel_1', 'Impressions_Channel_2'],
+              'media_spend': ['Cost_Channel_1', 'Cost_Channel_2'],
+          },
+      ),
+  )
+  def test_coords_to_columns_fails_validation(
+      self,
+      expected_error_message: str,
+      coord_to_columns_kwargs,
+  ):
+    with self.assertRaisesRegex(ValueError, expected_error_message):
+      load.CoordToColumns(**coord_to_columns_kwargs)
 
   @parameterized.named_parameters(
       (
@@ -2686,6 +2727,117 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
     ).load()
 
     self.assertIsNone(data.controls)
+
+  def test_dataframe_data_loader_loads_with_empty_organic_media_list(
+      self,
+  ):
+    coord_to_columns = load.CoordToColumns(
+        time='time',
+        geo='geo',
+        controls=['control_0', 'control_1'],
+        population='population',
+        kpi='kpi',
+        revenue_per_kpi='revenue_per_kpi',
+        media=['media_0', 'media_1', 'media_2'],
+        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        reach=['reach_0', 'reach_1'],
+        frequency=['frequency_0', 'frequency_1'],
+        rf_spend=['rf_spend_0', 'rf_spend_1'],
+        organic_reach=['organic_reach_0'],
+        organic_frequency=['organic_frequency_0'],
+        organic_media=[],
+    )
+    data = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel={
+            'media_0': 'ch_0',
+            'media_1': 'ch_1',
+            'media_2': 'ch_2',
+        },
+        media_spend_to_channel={
+            'media_spend_0': 'ch_0',
+            'media_spend_1': 'ch_1',
+            'media_spend_2': 'ch_2',
+        },
+        reach_to_channel={
+            'reach_0': 'rf_ch_0',
+            'reach_1': 'rf_ch_1',
+        },
+        frequency_to_channel={
+            'frequency_0': 'rf_ch_0',
+            'frequency_1': 'rf_ch_1',
+        },
+        rf_spend_to_channel={
+            'rf_spend_0': 'rf_ch_0',
+            'rf_spend_1': 'rf_ch_1',
+        },
+        organic_reach_to_channel={'organic_reach_0': 'organic_rf_ch_0'},
+        organic_frequency_to_channel={'organic_frequency_0': 'organic_rf_ch_0'},
+    ).load()
+
+    self.assertIsNone(data.organic_media)
+
+  def test_dataframe_data_loader_loads_with_empty_non_media_treatments_list(
+      self,
+  ):
+    coord_to_columns = load.CoordToColumns(
+        time='time',
+        geo='geo',
+        controls=['control_0', 'control_1'],
+        population='population',
+        kpi='kpi',
+        revenue_per_kpi='revenue_per_kpi',
+        media=['media_0', 'media_1', 'media_2'],
+        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        reach=['reach_0', 'reach_1'],
+        frequency=['frequency_0', 'frequency_1'],
+        rf_spend=['rf_spend_0', 'rf_spend_1'],
+        organic_reach=['organic_reach_0'],
+        organic_frequency=['organic_frequency_0'],
+        organic_media=['organic_media_1', 'organic_media_2', 'organic_media_3'],
+        non_media_treatments=[],
+    )
+    data = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel={
+            'media_0': 'ch_0',
+            'media_1': 'ch_1',
+            'media_2': 'ch_2',
+        },
+        media_spend_to_channel={
+            'media_spend_0': 'ch_0',
+            'media_spend_1': 'ch_1',
+            'media_spend_2': 'ch_2',
+        },
+        reach_to_channel={
+            'reach_0': 'rf_ch_0',
+            'reach_1': 'rf_ch_1',
+        },
+        frequency_to_channel={
+            'frequency_0': 'rf_ch_0',
+            'frequency_1': 'rf_ch_1',
+        },
+        rf_spend_to_channel={
+            'rf_spend_0': 'rf_ch_0',
+            'rf_spend_1': 'rf_ch_1',
+        },
+        organic_reach_to_channel={'organic_reach_0': 'organic_rf_ch_0'},
+        organic_frequency_to_channel={'organic_frequency_0': 'organic_rf_ch_0'},
+    ).load()
+
+    self.assertIsNone(data.non_media_treatments)
 
 
 if __name__ == '__main__':

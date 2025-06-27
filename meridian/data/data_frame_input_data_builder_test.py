@@ -1921,6 +1921,197 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
       builder.with_controls(self.BASIC_CONTROLS_DF, control_cols=[])
     self.assertIsNone(builder.controls)
 
+  def test_with_non_media_treatments_empty_non_media_treatment_cols_list(self):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertWarnsRegex(
+        UserWarning,
+        "Not adding non-media treatments data.",
+    ):
+      builder.with_non_media_treatments(
+          self.BASIC_NON_MEDIA_TREATMENTS_DF, non_media_treatment_cols=[]
+      )
+    self.assertIsNone(builder.non_media_treatments)
+
+  def test_with_organic_media_empty_organic_media_cols_list(self):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertRaisesRegex(
+        ValueError, "`organic_media_cols` must not be empty."
+    ):
+      builder.with_organic_media(
+          self.BASIC_ORGANIC_MEDIA_DF, organic_media_cols=[]
+      )
+    self.assertIsNone(builder.organic_media)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_reach_cols_empty",
+          with_organic_reach_kwargs={
+              "organic_reach_cols": [],
+              "organic_frequency_cols": ["organic_frequency_1"],
+              "organic_rf_channels": ["organic_rf_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="organic_frequency_cols_empty",
+          with_organic_reach_kwargs={
+              "organic_reach_cols": ["organic_reach_1"],
+              "organic_frequency_cols": [],
+              "organic_rf_channels": ["organic_rf_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="organic_rf_channels_empty",
+          with_organic_reach_kwargs={
+              "organic_reach_cols": ["organic_reach_1"],
+              "organic_frequency_cols": ["organic_frequency_1"],
+              "organic_rf_channels": [],
+          },
+      ),
+      dict(
+          testcase_name="all_empty",
+          with_organic_reach_kwargs={
+              "organic_reach_cols": [],
+              "organic_frequency_cols": [],
+              "organic_rf_channels": [],
+          },
+      ),
+  )
+  def test_with_organic_reach_empty_organic_reach_cols_and_frequency_cols(
+      self, with_organic_reach_kwargs
+  ):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "`organic_reach_cols`, `organic_frequency_cols`, and "
+        "`organic_rf_channels` must not be empty.",
+    ):
+      builder.with_organic_reach(
+          self.BASIC_ORGANIC_REACH_DF,
+          **with_organic_reach_kwargs,
+      )
+    self.assertIsNone(builder.organic_reach)
+    self.assertIsNone(builder.organic_frequency)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_cols_empty",
+          with_media_kwargs={
+              "media_cols": [],
+              "media_spend_cols": ["media_spend_1"],
+              "media_channels": ["media_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="media_spend_cols_empty",
+          with_media_kwargs={
+              "media_cols": ["media_1"],
+              "media_spend_cols": [],
+              "media_channels": ["media_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="media_channels_empty",
+          with_media_kwargs={
+              "media_cols": ["media_1"],
+              "media_spend_cols": ["media_spend_1"],
+              "media_channels": [],
+          },
+      ),
+      dict(
+          testcase_name="all_empty",
+          with_media_kwargs={
+              "media_cols": [],
+              "media_spend_cols": [],
+              "media_channels": [],
+          },
+      ),
+  )
+  def test_with_media_empty_media_cols_list(self, with_media_kwargs):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "`media_cols`, `media_spend_cols`, and `media_channels` must not be"
+        " empty.",
+    ):
+      builder.with_media(
+          self.BASIC_MEDIA_DF,
+          **with_media_kwargs,
+      )
+    self.assertIsNone(builder.media)
+    self.assertIsNone(builder.media_spend)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="reach_cols_empty",
+          with_reach_kwargs={
+              "reach_cols": [],
+              "frequency_cols": ["frequency_1"],
+              "rf_spend_cols": ["rf_spend_1"],
+              "rf_channels": ["rf_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="frequency_cols_empty",
+          with_reach_kwargs={
+              "reach_cols": ["reach_1"],
+              "frequency_cols": [],
+              "rf_spend_cols": ["rf_spend_1"],
+              "rf_channels": ["rf_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="rf_spend_cols_empty",
+          with_reach_kwargs={
+              "reach_cols": ["reach_1"],
+              "frequency_cols": ["frequency_1"],
+              "rf_spend_cols": [],
+              "rf_channels": ["rf_channel_1"],
+          },
+      ),
+      dict(
+          testcase_name="rf_channels_empty",
+          with_reach_kwargs={
+              "reach_cols": ["reach_1"],
+              "frequency_cols": ["frequency_1"],
+              "rf_spend_cols": ["rf_spend_1"],
+              "rf_channels": [],
+          },
+      ),
+      dict(
+          testcase_name="all_empty",
+          with_reach_kwargs={
+              "reach_cols": [],
+              "frequency_cols": [],
+              "rf_spend_cols": [],
+              "rf_channels": [],
+          },
+      ),
+  )
+  def test_with_reach_empty_reach_cols_list(self, with_reach_kwargs):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "`reach_cols`, `frequency_cols`, `rf_spend_cols`, and `rf_channels`"
+        " must not be empty.",
+    ):
+      builder.with_reach(
+          self.BASIC_REACH_DF,
+          **with_reach_kwargs,
+      )
+    self.assertIsNone(builder.reach)
+    self.assertIsNone(builder.frequency)
+    self.assertIsNone(builder.rf_spend)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -382,6 +382,9 @@ class CoordToColumns:
           ' both.'
       )
 
+    if self.revenue_per_kpi is not None and not self.revenue_per_kpi.strip():
+      raise ValueError('`revenue_per_kpi` should not be empty if provided.')
+
 
 @dataclasses.dataclass
 class DataFrameDataLoader(InputDataLoader):
@@ -664,14 +667,14 @@ class DataFrameDataLoader(InputDataLoader):
           self.coord_to_columns.time,
           self.coord_to_columns.geo,
       )
-    if self.coord_to_columns.non_media_treatments is not None:
+    if self.coord_to_columns.non_media_treatments:
       builder.with_non_media_treatments(
           self.df,
           list(self.coord_to_columns.non_media_treatments),
           self.coord_to_columns.time,
           self.coord_to_columns.geo,
       )
-    if self.coord_to_columns.revenue_per_kpi is not None:
+    if self.coord_to_columns.revenue_per_kpi:
       builder.with_revenue_per_kpi(
           self.df,
           self.coord_to_columns.revenue_per_kpi,
@@ -712,7 +715,7 @@ class DataFrameDataLoader(InputDataLoader):
           self.coord_to_columns.time,
           self.coord_to_columns.geo,
       )
-    if self.coord_to_columns.organic_media is not None:
+    if self.coord_to_columns.organic_media:
       builder.with_organic_media(
           self.df,
           list(self.coord_to_columns.organic_media),

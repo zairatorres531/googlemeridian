@@ -93,9 +93,7 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       The `DataFrameInputDataBuilder` with the added controls data.
     """
     if not control_cols:
-      warnings.warn(
-          'No control columns provided. Not adding controls data.'
-      )
+      warnings.warn('No control columns provided. Not adding controls data.')
       return self
 
     controls_df = df.copy()
@@ -242,6 +240,12 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     Returns:
       The `DataFrameInputDataBuilder` with the added media and media spend data.
     """
+    if not media_cols or not media_spend_cols or not media_channels:
+      raise ValueError(
+          '`media_cols`, `media_spend_cols`, and `media_channels` must not be '
+          'empty.'
+      )
+
     media_df = df.copy()
 
     ### Validate ###
@@ -314,6 +318,17 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       The `DataFrameInputDataBuilder` with the added reach, frequency, and rf
       spend data.
     """
+    if (
+        not reach_cols
+        or not frequency_cols
+        or not rf_spend_cols
+        or not rf_channels
+    ):
+      raise ValueError(
+          '`reach_cols`, `frequency_cols`, `rf_spend_cols`, and `rf_channels` '
+          'must not be empty.'
+      )
+
     reach_df = df.copy()
 
     ### Validate ###
@@ -398,6 +413,9 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     Returns:
       The `DataFrameInputDataBuilder` with the added organic media data.
     """
+    if not organic_media_cols:
+      raise ValueError('`organic_media_cols` must not be empty.')
+
     organic_media_df = df.copy()
 
     ### Validate ###
@@ -464,6 +482,16 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
       The `DataFrameInputDataBuilder` with the added organic reach and organic
       frequency data.
     """
+    if (
+        not organic_reach_cols
+        or not organic_frequency_cols
+        or not organic_rf_channels
+    ):
+      raise ValueError(
+          '`organic_reach_cols`, `organic_frequency_cols`, and'
+          ' `organic_rf_channels` must not be empty.'
+      )
+
     organic_reach_frequency_df = df.copy()
 
     ### Validate ###
@@ -532,6 +560,13 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     Returns:
       The `DataFrameInputDataBuilder` with the added non-media treatments data.
     """
+    if not non_media_treatment_cols:
+      warnings.warn(
+          'No non-media treatment columns were provided. Not adding non-media '
+          'treatments data.'
+      )
+      return self
+
     non_media_treatments_df = df.copy()
 
     ### Validate ###
