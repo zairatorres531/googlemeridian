@@ -657,7 +657,7 @@ class DataFrameDataLoader(InputDataLoader):
       builder.with_population(
           self.df, self.coord_to_columns.population, self.coord_to_columns.geo
       )
-    if self.coord_to_columns.controls is not None:
+    if self.coord_to_columns.controls:
       builder.with_controls(
           self.df,
           list(self.coord_to_columns.controls),

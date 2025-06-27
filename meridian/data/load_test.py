@@ -2635,6 +2635,58 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         sorted_loader.organic_frequency, unsorted_loader.organic_frequency
     )
 
+  def test_dataframe_data_loader_loads_with_empty_controls_list(self):
+    coord_to_columns = load.CoordToColumns(
+        time='time',
+        geo='geo',
+        controls=[],
+        population='population',
+        kpi='kpi',
+        revenue_per_kpi='revenue_per_kpi',
+        media=['media_0', 'media_1', 'media_2'],
+        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        reach=['reach_0', 'reach_1'],
+        frequency=['frequency_0', 'frequency_1'],
+        rf_spend=['rf_spend_0', 'rf_spend_1'],
+        organic_reach=['organic_reach_0'],
+        organic_frequency=['organic_frequency_0'],
+    )
+    data = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        coord_to_columns=coord_to_columns,
+        kpi_type=constants.NON_REVENUE,
+        media_to_channel={
+            'media_0': 'ch_0',
+            'media_1': 'ch_1',
+            'media_2': 'ch_2',
+        },
+        media_spend_to_channel={
+            'media_spend_0': 'ch_0',
+            'media_spend_1': 'ch_1',
+            'media_spend_2': 'ch_2',
+        },
+        reach_to_channel={
+            'reach_0': 'rf_ch_0',
+            'reach_1': 'rf_ch_1',
+        },
+        frequency_to_channel={
+            'frequency_0': 'rf_ch_0',
+            'frequency_1': 'rf_ch_1',
+        },
+        rf_spend_to_channel={
+            'rf_spend_0': 'rf_ch_0',
+            'rf_spend_1': 'rf_ch_1',
+        },
+        organic_reach_to_channel={'organic_reach_0': 'organic_rf_ch_0'},
+        organic_frequency_to_channel={'organic_frequency_0': 'organic_rf_ch_0'},
+    ).load()
+
+    self.assertIsNone(data.controls)
+
 
 if __name__ == '__main__':
   absltest.main()

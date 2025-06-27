@@ -1913,6 +1913,14 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
 
     self.assertEqual(data.geo.values.tolist(), ["111", "222"])
 
+  def test_with_controls_empty_control_cols_list(self):
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+    with self.assertWarnsRegex(UserWarning, "Not adding controls data"):
+      builder.with_controls(self.BASIC_CONTROLS_DF, control_cols=[])
+    self.assertIsNone(builder.controls)
+
 
 if __name__ == "__main__":
   absltest.main()

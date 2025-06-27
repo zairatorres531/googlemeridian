@@ -2392,7 +2392,7 @@ class InputDataBuilderTest(parameterized.TestCase):
     builder.kpi = kpi_da
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "geos already set to ['A', 'B', 'C'].",
+        "geos already set to ['A', 'B', 'C']. Cannot reassign to ['A', 'B'].",
     ):
       builder.population = population_da
     with self.assertRaisesWithLiteralMatch(
@@ -2418,7 +2418,8 @@ class InputDataBuilderTest(parameterized.TestCase):
     builder.geos = ['A', 'B', 'C']
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "geos already set to ['A', 'B', 'C'].",
+        "geos already set to ['A', 'B', 'C']. "
+        "Cannot reassign to ['A', 'B', 'D'].",
     ):
       builder.geos = ['A', 'B', 'D']
 

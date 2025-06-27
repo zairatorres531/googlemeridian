@@ -25,6 +25,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * `XrDatasetDataLoader` to use new `InputDataBuilder` API under the hood.
   These changes are backwards compatible.
+* Fix mishandling of an empty `controls` column list in the data loader params.
 
 ## [1.1.3] - 2025-06-23
 

@@ -134,7 +134,9 @@ class InputDataBuilder(abc.ABC):
     if len(value) != len(set(value)):
       raise ValueError('Geos must be unique.')
     if self.geos is not None and set(self.geos) != set(value):
-      raise ValueError(f'geos already set to {self.geos}.')
+      raise ValueError(
+          f'geos already set to {self.geos}. Cannot reassign to {value}.'
+      )
     self._geos = value
 
   @property

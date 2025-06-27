@@ -92,6 +92,12 @@ class DataFrameInputDataBuilder(input_data_builder.InputDataBuilder):
     Returns:
       The `DataFrameInputDataBuilder` with the added controls data.
     """
+    if not control_cols:
+      warnings.warn(
+          'No control columns provided. Not adding controls data.'
+      )
+      return self
+
     controls_df = df.copy()
 
     ### Validate ###
