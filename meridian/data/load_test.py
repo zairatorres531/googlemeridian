@@ -17,6 +17,7 @@ import copy
 import dataclasses
 import datetime
 import os
+from typing import Any
 import warnings
 
 from absl.testing import absltest
@@ -2461,14 +2462,14 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
       dict(
           testcase_name='media_and_media_spend',
           media_to_channel={
-              'media_2': 'ch_2',
-              'media_1': 'ch_1',
               'media_0': 'ch_0',
+              'media_1': 'ch_1',
+              'media_2': 'ch_2',
           },
           media_spend_to_channel={
-              'media_spend_2': 'yt',
-              'media_spend_1': 'ads',
               'media_spend_0': 'search',
+              'media_spend_1': 'ads',
+              'media_spend_2': 'yt',
           },
           error_msg=(
               'The media and media_spend columns must have the same set of'
@@ -2477,12 +2478,18 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
       ),
       dict(
           testcase_name='rf_and_rf_spend',
-          reach_to_channel={'reach_1': 'rf_ch_1', 'reach_0': 'rf_ch_0'},
-          frequency_to_channel={
-              'frequency_1': 'search',
-              'frequency_0': 'rf_ch_0',
+          reach_to_channel={
+              'reach_0': 'rf_ch_0',
+              'reach_1': 'rf_ch_1',
           },
-          rf_spend_to_channel={'rf_spend_1': 'yt', 'rf_spend_0': 'ads'},
+          frequency_to_channel={
+              'frequency_0': 'rf_ch_0',
+              'frequency_1': 'search',
+          },
+          rf_spend_to_channel={
+              'rf_spend_0': 'ads',
+              'rf_spend_1': 'yt',
+          },
           error_msg=(
               'The reach, frequency, and rf_spend columns must have the same'
               ' set of channels.'
@@ -2513,35 +2520,36 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
   ):
     if media_to_channel is None:
       media_to_channel = {
-          'media_2': 'ch_2',
-          'media_1': 'ch_1',
           'media_0': 'ch_0',
+          'media_1': 'ch_1',
+          'media_2': 'ch_2',
       }
     if media_spend_to_channel is None:
       media_spend_to_channel = {
-          'media_spend_2': 'ch_2',
-          'media_spend_1': 'ch_1',
           'media_spend_0': 'ch_0',
+          'media_spend_1': 'ch_1',
+          'media_spend_2': 'ch_2',
       }
     if reach_to_channel is None:
       reach_to_channel = {
-          'reach_1': 'rf_ch_1',
           'reach_0': 'rf_ch_0',
+          'reach_1': 'rf_ch_1',
       }
     if frequency_to_channel is None:
       frequency_to_channel = {
-          'frequency_1': 'rf_ch_1',
           'frequency_0': 'rf_ch_0',
+          'frequency_1': 'rf_ch_1',
       }
     if rf_spend_to_channel is None:
       rf_spend_to_channel = {
-          'rf_spend_1': 'rf_ch_1',
           'rf_spend_0': 'rf_ch_0',
+          'rf_spend_1': 'rf_ch_1',
       }
     if organic_reach_to_channel is None:
       organic_reach_to_channel = {'organic_reach_0': 'organic_rf_ch_0'}
     if organic_frequency_to_channel is None:
       organic_frequency_to_channel = {'organic_frequency_0': 'organic_rf_ch_0'}
+
     with self.assertRaisesRegex(
         ValueError,
         error_msg,
@@ -2554,7 +2562,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
           kpi='kpi',
           revenue_per_kpi='revenue_per_kpi',
           media=['media_0', 'media_1', 'media_2'],
-          media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+          media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
           reach=['reach_0', 'reach_1'],
           frequency=['frequency_0', 'frequency_1'],
           rf_spend=['rf_spend_0', 'rf_spend_1'],
@@ -2578,7 +2586,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
           organic_frequency_to_channel=organic_frequency_to_channel,
       ).load()
 
-  def test_dataframe_data_loader_loads_unsorted_channels(self):
+  def test_dataframe_data_loader_loads_unsorted_channel_mappers(self):
     coord_to_columns = load.CoordToColumns(
         time='time',
         geo='geo',
@@ -2587,7 +2595,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         kpi='kpi',
         revenue_per_kpi='revenue_per_kpi',
         media=['media_0', 'media_1', 'media_2'],
-        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
         reach=['reach_0', 'reach_1'],
         frequency=['frequency_0', 'frequency_1'],
         rf_spend=['rf_spend_0', 'rf_spend_1'],
@@ -2685,7 +2693,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         kpi='kpi',
         revenue_per_kpi='revenue_per_kpi',
         media=['media_0', 'media_1', 'media_2'],
-        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
         reach=['reach_0', 'reach_1'],
         frequency=['frequency_0', 'frequency_1'],
         rf_spend=['rf_spend_0', 'rf_spend_1'],
@@ -2701,14 +2709,14 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         coord_to_columns=coord_to_columns,
         kpi_type=constants.NON_REVENUE,
         media_to_channel={
+            'media_2': 'ch_2',
             'media_0': 'ch_0',
             'media_1': 'ch_1',
-            'media_2': 'ch_2',
         },
         media_spend_to_channel={
             'media_spend_0': 'ch_0',
-            'media_spend_1': 'ch_1',
             'media_spend_2': 'ch_2',
+            'media_spend_1': 'ch_1',
         },
         reach_to_channel={
             'reach_0': 'rf_ch_0',
@@ -2739,7 +2747,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         kpi='kpi',
         revenue_per_kpi='revenue_per_kpi',
         media=['media_0', 'media_1', 'media_2'],
-        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
         reach=['reach_0', 'reach_1'],
         frequency=['frequency_0', 'frequency_1'],
         rf_spend=['rf_spend_0', 'rf_spend_1'],
@@ -2794,7 +2802,7 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         kpi='kpi',
         revenue_per_kpi='revenue_per_kpi',
         media=['media_0', 'media_1', 'media_2'],
-        media_spend=['media_spend_1', 'media_spend_0', 'media_spend_2'],
+        media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
         reach=['reach_0', 'reach_1'],
         frequency=['frequency_0', 'frequency_1'],
         rf_spend=['rf_spend_0', 'rf_spend_1'],
@@ -2812,14 +2820,14 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
         coord_to_columns=coord_to_columns,
         kpi_type=constants.NON_REVENUE,
         media_to_channel={
-            'media_0': 'ch_0',
             'media_1': 'ch_1',
+            'media_0': 'ch_0',
             'media_2': 'ch_2',
         },
         media_spend_to_channel={
             'media_spend_0': 'ch_0',
-            'media_spend_1': 'ch_1',
             'media_spend_2': 'ch_2',
+            'media_spend_1': 'ch_1',
         },
         reach_to_channel={
             'reach_0': 'rf_ch_0',
@@ -2838,6 +2846,182 @@ class NonPaidInputDataLoaderTest(parameterized.TestCase):
     ).load()
 
     self.assertIsNone(data.non_media_treatments)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='inconsistent_media_and_media_spend_channels',
+          expected_error_msg=(
+              'The `media` and `media_spend` columns must correspond to the'
+              ' same channels, in user order.'
+          ),
+          ctor_kwargs={
+              'coord_to_columns': load.CoordToColumns(
+                  media=['media_0', 'media_1', 'media_2'],
+                  media_spend=[
+                      'media_spend_1',
+                      'media_spend_0',
+                      'media_spend_2',
+                  ],
+              ),
+              'media_to_channel': {
+                  'media_0': 'ch_0',
+                  'media_1': 'ch_1',
+                  'media_2': 'ch_2',
+              },
+              'media_spend_to_channel': {
+                  'media_spend_0': 'ch_0',
+                  'media_spend_1': 'ch_1',
+                  'media_spend_2': 'ch_2',
+              },
+          },
+      ),
+      dict(
+          testcase_name='inconsistent_reach_and_frequency_channels',
+          expected_error_msg=(
+              'The `reach`, `frequency`, and `rf_spend` columns must correspond'
+              ' to the same channels, in user order.'
+          ),
+          ctor_kwargs={
+              'coord_to_columns': load.CoordToColumns(
+                  reach=['reach_0', 'reach_1'],
+                  frequency=['frequency_1', 'frequency_0'],
+                  rf_spend=['rf_spend_0', 'rf_spend_1'],
+              ),
+              'reach_to_channel': {
+                  'reach_0': 'rf_ch_0',
+                  'reach_1': 'rf_ch_1',
+              },
+              'frequency_to_channel': {
+                  'frequency_0': 'rf_ch_0',
+                  'frequency_1': 'rf_ch_1',
+              },
+              'rf_spend_to_channel': {
+                  'rf_spend_0': 'rf_ch_0',
+                  'rf_spend_1': 'rf_ch_1',
+              },
+          },
+      ),
+      dict(
+          testcase_name='inconsistent_organic_reach_and_frequency_channels',
+          expected_error_msg=(
+              'The `organic_reach` and `organic_frequency` columns must'
+              ' correspond to the same channels, in user order.'
+          ),
+          ctor_kwargs={
+              'coord_to_columns': load.CoordToColumns(
+                  reach=['reach_0', 'reach_1'],
+                  frequency=['frequency_0', 'frequency_1'],
+                  rf_spend=['rf_spend_0', 'rf_spend_1'],
+                  organic_reach=['organic_reach_0', 'organic_reach_1'],
+                  organic_frequency=[
+                      'organic_frequency_1',
+                      'organic_frequency_0',
+                  ],
+              ),
+              'reach_to_channel': {
+                  'reach_0': 'rf_ch_0',
+                  'reach_1': 'rf_ch_1',
+              },
+              'frequency_to_channel': {
+                  'frequency_0': 'rf_ch_0',
+                  'frequency_1': 'rf_ch_1',
+              },
+              'rf_spend_to_channel': {
+                  'rf_spend_0': 'rf_ch_0',
+                  'rf_spend_1': 'rf_ch_1',
+              },
+              'organic_reach_to_channel': {
+                  'organic_reach_0': 'organic_rf_ch_0',
+                  'organic_reach_1': 'organic_rf_ch_1',
+              },
+              'organic_frequency_to_channel': {
+                  'organic_frequency_1': 'organic_rf_ch_1',
+                  'organic_frequency_0': 'organic_rf_ch_0',
+              },
+          },
+      ),
+  )
+  def test_csv_loader_config_invalid_channel_order_inconsistent(
+      self,
+      expected_error_msg: str,
+      ctor_kwargs: dict[str, Any],
+  ):
+    with self.assertRaisesRegex(ValueError, expected_error_msg):
+      load.CsvDataLoader(
+          csv_path=os.path.join(
+              os.path.dirname(__file__),
+              _UNIT_TEST_DATA_DIR_NAME,
+              'sample_data_with_organic_and_non_media.csv',
+          ),
+          kpi_type=constants.NON_REVENUE,
+          **ctor_kwargs,
+      )
+
+  def test_csv_loader_maintains_user_media_channel_order(self):
+    coord_to_columns = load.CoordToColumns(
+        media=['media_0', 'media_1', 'media_2'],
+        media_spend=['media_spend_0', 'media_spend_1', 'media_spend_2'],
+    )
+    loader = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        kpi_type=constants.NON_REVENUE,
+        coord_to_columns=coord_to_columns,
+        media_to_channel={
+            'media_2': 'tv',
+            'media_0': 'yt',
+            'media_1': 'ads',
+        },
+        media_spend_to_channel={
+            'media_spend_0': 'yt',
+            'media_spend_2': 'tv',
+            'media_spend_1': 'ads',
+        },
+    )
+
+    data = loader.load()
+
+    expected_channel_coords = ['yt', 'ads', 'tv']
+    self.assertEqual(list(data.media.media_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+    self.assertEqual(list(data.media_spend.media_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+
+  def test_csv_loader_maintains_user_rf_channel_order(self):
+    coord_to_columns = load.CoordToColumns(
+        reach=['reach_0', 'reach_1'],
+        frequency=['frequency_0', 'frequency_1'],
+        rf_spend=['rf_spend_0', 'rf_spend_1'],
+    )
+    loader = load.CsvDataLoader(
+        csv_path=os.path.join(
+            os.path.dirname(__file__),
+            _UNIT_TEST_DATA_DIR_NAME,
+            'sample_data_with_organic_and_non_media.csv',
+        ),
+        kpi_type=constants.NON_REVENUE,
+        coord_to_columns=coord_to_columns,
+        reach_to_channel={
+            'reach_0': 'yt',
+            'reach_1': 'ads',
+        },
+        frequency_to_channel={
+            'frequency_0': 'yt',
+            'frequency_1': 'ads',
+        },
+        rf_spend_to_channel={
+            'rf_spend_1': 'ads',
+            'rf_spend_0': 'yt',
+        },
+    )
+
+    data = loader.load()
+
+    expected_channel_coords = ['yt', 'ads']
+    self.assertEqual(list(data.reach.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+    self.assertEqual(list(data.frequency.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
+    self.assertEqual(list(data.rf_spend.rf_channel.values), expected_channel_coords)  # pytype: disable=attribute-error
 
 
 if __name__ == '__main__':
